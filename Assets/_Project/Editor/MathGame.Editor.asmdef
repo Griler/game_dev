@@ -1,0 +1,19 @@
+{
+    "name": "MathGame.Editor",
+    "rootNamespace": "MathGame.Editor",
+    "references": [
+        "MathGame",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
