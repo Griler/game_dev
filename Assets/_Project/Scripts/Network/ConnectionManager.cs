@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
 using UnityEngine;
@@ -20,6 +21,10 @@ namespace MathGame.Network
         public string ServerIP   => serverIP;
         public ushort ServerPort => serverPort;
 
+        // Payloads parsed during approval, consumed once the client is fully
+        // connected — registering earlier risks the match spawn racing the connect.
+        private readonly Dictionary<ulong, PlayerConnectionData> _pendingConnections = new();
+
         // ── Lifecycle ───────────────────────────────────────────────────────
 
         private void Awake()
@@ -39,6 +44,7 @@ namespace MathGame.Network
             transport.SetConnectionData("0.0.0.0", serverPort);
 
             NetworkManager.Singleton.ConnectionApprovalCallback = OnConnectionApproval;
+            NetworkManager.Singleton.OnClientConnectedCallback  += OnClientConnected;
             NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnected;
 
             NetworkManager.Singleton.StartServer();
@@ -55,6 +61,7 @@ namespace MathGame.Network
             {
                 playerName  = playerName,
                 eloRating   = elo,
+                gamesPlayed = gamesPlayed,
             };
             NetworkManager.Singleton.NetworkConfig.ConnectionData = payload.ToBytes();
 
@@ -73,24 +80,41 @@ namespace MathGame.Network
             response.Approved  = true;
             response.CreatePlayerObject = false;
 
+            // Stash the payload; registration happens in OnClientConnected once the
+            // client can actually receive the spawned NetworkGameState.
+            PlayerConnectionData data;
             if (request.Payload == null || request.Payload.Length == 0)
             {
                 Debug.LogWarning($"[Server] Client {request.ClientNetworkId} sent empty payload.");
-                ServerMatchManager.Instance?.RegisterClient(
-                    request.ClientNetworkId, "Unknown", 800, 0);
-                return;
+                data = new PlayerConnectionData { playerName = "Unknown", eloRating = 800, gamesPlayed = 0 };
+            }
+            else
+            {
+                data = PlayerConnectionData.FromBytes(request.Payload);
             }
 
-            var data = PlayerConnectionData.FromBytes(request.Payload);
-            int games = PlayerPrefs.GetInt($"games_{data.playerName}", 0); // fallback
+            _pendingConnections[request.ClientNetworkId] = data;
+        }
+
+        private void OnClientConnected(ulong clientId)
+        {
+            if (!NetworkManager.Singleton.IsServer) return;
+
+            if (!_pendingConnections.TryGetValue(clientId, out var data))
+                data = new PlayerConnectionData { playerName = "Unknown", eloRating = 800, gamesPlayed = 0 };
+            _pendingConnections.Remove(clientId);
+
             ServerMatchManager.Instance?.RegisterClient(
-                request.ClientNetworkId, data.playerName, data.eloRating, games);
+                clientId, data.playerName, data.eloRating, data.gamesPlayed);
         }
 
         private void OnClientDisconnected(ulong clientId)
         {
             if (NetworkManager.Singleton.IsServer)
+            {
+                _pendingConnections.Remove(clientId);
                 ServerMatchManager.Instance?.OnClientDisconnected(clientId);
+            }
         }
 
         // ── Helpers ─────────────────────────────────────────────────────────

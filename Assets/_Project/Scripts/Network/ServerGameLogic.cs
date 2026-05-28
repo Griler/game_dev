@@ -42,8 +42,8 @@ namespace MathGame.Network
             // Write player info to NetworkVariables
             _state.Player1ClientId.Value = p1Id;
             _state.Player2ClientId.Value = p2Id;
-            _state.Player1Name.Value     = new FixedString64Bytes(p1Name);
-            _state.Player2Name.Value     = new FixedString64Bytes(p2Name);
+            _state.Player1Name.Value     = ToFixed(p1Name);
+            _state.Player2Name.Value     = ToFixed(p2Name);
             _state.Player1Elo.Value      = p1Elo;
             _state.Player2Elo.Value      = p2Elo;
 
@@ -204,6 +204,14 @@ namespace MathGame.Network
         }
 
         // ── Helpers ─────────────────────────────────────────────────────────
+
+        /// <summary>FixedString64Bytes holds up to ~61 UTF-8 bytes; clamp to stay safe.</summary>
+        private static FixedString64Bytes ToFixed(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return new FixedString64Bytes("Player");
+            if (s.Length > 20) s = s.Substring(0, 20);
+            return new FixedString64Bytes(s);
+        }
 
         private static bool CheckAnswer(int[] filled, int[] correct)
         {

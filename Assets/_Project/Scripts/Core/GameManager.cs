@@ -38,6 +38,12 @@ namespace MathGame.Core
 
         private bool  _waitingForNextQuestion;
 
+        // When true, the match is driven by the network layer (ServerGameLogic +
+        // ClientGameProxy). The offline question loop, timer and ELO must stay idle.
+        private bool  _networked;
+        public  bool  IsNetworked => _networked;
+        public  void  SetNetworkedMode(bool on) => _networked = on;
+
         // ── Events ───────────────────────────────────────────────────────────
         public event Action<int, int, int>  OnScoreUpdated;      // (localScore, remoteScore, questionIndex)
         public event Action<float>          OnTimerTick;         // seconds remaining
@@ -70,6 +76,7 @@ namespace MathGame.Core
 
         private void Update()
         {
+            if (_networked) return; // server/ClientGameProxy own the timer in network mode
             if (stateMachine.CurrentPhase == GamePhase.Playing)
                 TickPlayingTimer();
         }
@@ -78,6 +85,8 @@ namespace MathGame.Core
 
         public void StartGame()
         {
+            if (_networked) return; // network matches are started by the server, not here
+
             _seed            = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
             _generator       = new QuestionGenerator(_seed);
             _currentConfig   = GetConfig(RankSystem.GetMatchRank(LocalPlayer.eloRating, RemotePlayer.eloRating));
@@ -124,6 +133,10 @@ namespace MathGame.Core
 
         private void HandlePhaseChange(GamePhase previous, GamePhase next)
         {
+            // In network mode the server drives question loading and match end;
+            // running the offline path here would dereference the null generator.
+            if (_networked) return;
+
             if (next == GamePhase.Playing)
                 LoadNextQuestion();
             else if (next == GamePhase.RoundEnd)
