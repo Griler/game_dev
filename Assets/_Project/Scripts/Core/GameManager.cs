@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using MathGame.Network;
 using MathGame.Player;
 using MathGame.Question;
 using MathGame.UI;
@@ -92,6 +93,16 @@ namespace MathGame.Core
         /// <summary>Called by QuestionPanel when the player submits a complete answer.</summary>
         public void SubmitAnswer(int[] filledValues)
         {
+            // In multiplayer: route answer to server; server handles scoring + feedback
+            if (NetworkGameState.Instance != null &&
+                Unity.Netcode.NetworkManager.Singleton != null &&
+                Unity.Netcode.NetworkManager.Singleton.IsClient &&
+                !Unity.Netcode.NetworkManager.Singleton.IsServer)
+            {
+                NetworkGameState.Instance.SubmitAnswerServerRpc(filledValues);
+                return;
+            }
+
             if (stateMachine.CurrentPhase != GamePhase.Playing) return;
             if (_waitingForNextQuestion) return;
 
