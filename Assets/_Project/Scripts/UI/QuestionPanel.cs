@@ -41,7 +41,10 @@ namespace MathGame.UI
                 if (active) _blankSlots[i].SetEmpty();
             }
 
-            _questionCounterText.text = $"Câu {questionIndex}/{totalQuestions}";
+            // totalQuestions <= 0 → open-ended race, show just the running count.
+            _questionCounterText.text = totalQuestions > 0
+                ? $"Câu {questionIndex}/{totalQuestions}"
+                : $"Câu {questionIndex}";
             RefreshExpressionText();
         }
 

@@ -1,11 +1,15 @@
 using System.IO;
 using UnityEditor;
+using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using TMPro;
+using Unity.Netcode;
+using Unity.Netcode.Transports.UTP;
 using MathGame.Core;
+using MathGame.Network;
 using MathGame.UI;
 
 namespace MathGame.Editor
@@ -19,6 +23,7 @@ namespace MathGame.Editor
         private const string SCENE_PATH     = "Assets/_Project/Scenes/GameScene.unity";
         private const string TILE_PREFAB    = "Assets/_Project/Prefabs/NumberTile.prefab";
         private const string BACKSP_PREFAB  = "Assets/_Project/Prefabs/BackspaceButton.prefab";
+        private const string NGS_PREFAB     = "Assets/_Project/Prefabs/NetworkGameState.prefab";
 
         // Reference resolution (landscape)
         private static readonly Vector2 RefResolution = new(1920f, 1080f);
@@ -261,6 +266,11 @@ namespace MathGame.Editor
             gm.stateMachine = gsm;
             gm.hud          = hud;
 
+            // ── Networking (NGO) ─────────────────────────────────────────────
+            var ngsPrefab = CreateNetworkGameStatePrefab();
+            BuildNetworking(ngsPrefab);
+            BuildMatchmakingPanel(canvasGO);
+
             // ── Save scene ───────────────────────────────────────────────────
             EditorSceneManager.SaveScene(scene, SCENE_PATH);
             AssetDatabase.Refresh();
@@ -304,6 +314,103 @@ namespace MathGame.Editor
             var prefab = PrefabUtility.SaveAsPrefabAsset(go, TILE_PREFAB);
             Object.DestroyImmediate(go);
             return prefab;
+        }
+
+        /// <summary>
+        /// Prefab holding the per-match authoritative state: NetworkObject +
+        /// NetworkGameState (synced vars/RPCs) + ServerGameLogic (server-only rules).
+        /// </summary>
+        private static GameObject CreateNetworkGameStatePrefab()
+        {
+            var go = new GameObject("NetworkGameState");
+            go.AddComponent<NetworkObject>();
+            go.AddComponent<NetworkGameState>();
+            go.AddComponent<ServerGameLogic>();
+
+            var prefab = PrefabUtility.SaveAsPrefabAsset(go, NGS_PREFAB);
+            Object.DestroyImmediate(go);
+            return prefab;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // Networking infrastructure
+        // ═══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Builds the NetworkManager (+ UnityTransport) and all network singletons,
+        /// then registers the match prefab. One GameObject hosts them all.
+        /// </summary>
+        private static void BuildNetworking(GameObject ngsPrefab)
+        {
+            var nmGO = new GameObject("NetworkManager");
+            var nm   = nmGO.AddComponent<NetworkManager>();
+            var utp  = nmGO.AddComponent<UnityTransport>();
+            utp.SetConnectionData("127.0.0.1", 7777);
+
+            var config = new NetworkConfig
+            {
+                NetworkTransport      = utp,
+                ConnectionApproval    = true,   // ConnectionManager parses the payload
+                EnableSceneManagement = false,  // we spawn match objects manually
+            };
+            config.Prefabs.Add(new NetworkPrefab { Prefab = ngsPrefab });
+            nm.NetworkConfig = config;
+
+            // Network singletons (all live on the NetworkManager object)
+            nmGO.AddComponent<ConnectionManager>();
+            var smm = nmGO.AddComponent<ServerMatchManager>();
+            nmGO.AddComponent<ClientGameProxy>();
+            nmGO.AddComponent<MatchmakingService>();
+            nmGO.AddComponent<ServerBootstrap>();
+
+            SetPrivate(smm, "networkGameStatePrefab", ngsPrefab.GetComponent<NetworkObject>());
+
+            EditorUtility.SetDirty(nm);
+            EditorUtility.SetDirty(smm);
+        }
+
+        /// <summary>Full-screen "Find match" overlay shown before a match begins.</summary>
+        private static void BuildMatchmakingPanel(GameObject canvasGO)
+        {
+            var panel = MakePanel("MatchmakingPanel", canvasGO.transform,
+                new Color(0.04f, 0.04f, 0.10f, 0.98f));
+            panel.AddComponent<Image>().color = new Color(0.04f, 0.04f, 0.10f, 0.98f);
+            StretchFull(panel.GetComponent<RectTransform>());
+            var mmComp = panel.AddComponent<MatchmakingPanel>();
+
+            var vl = panel.AddComponent<VerticalLayoutGroup>();
+            vl.childAlignment         = TextAnchor.MiddleCenter;
+            vl.childForceExpandWidth   = true;
+            vl.childForceExpandHeight  = false;
+            vl.spacing                 = 40f;
+            vl.padding                 = new RectOffset(80, 80, 60, 60);
+
+            var titleGO = MakeTMPText("Title", panel.transform, "MATH BATTLE", 90);
+            titleGO.GetComponent<TextMeshProUGUI>().color = new Color(0.3f, 0.8f, 1f);
+            titleGO.AddComponent<LayoutElement>().minHeight = 120f;
+
+            var statusGO = MakeTMPText("StatusLabel", panel.transform,
+                "Nhấn Tìm trận để bắt đầu", 36);
+            statusGO.AddComponent<LayoutElement>().minHeight = 60f;
+
+            var findBtn = CreateStyledButton("FindMatchButton", panel.transform,
+                "Tìm trận", new Color(0.1f, 0.6f, 0.3f));
+            var findLE = findBtn.AddComponent<LayoutElement>();
+            findLE.minHeight = 90f; findLE.preferredWidth = 420f;
+
+            var cancelBtn = CreateStyledButton("CancelButton", panel.transform,
+                "Hủy", new Color(0.5f, 0.2f, 0.2f));
+            var cancelLE = cancelBtn.AddComponent<LayoutElement>();
+            cancelLE.minHeight = 70f; cancelLE.preferredWidth = 300f;
+
+            SetPrivate(mmComp, "statusLabel",  statusGO.GetComponent<TextMeshProUGUI>());
+            SetPrivate(mmComp, "cancelButton", cancelBtn.GetComponent<Button>());
+
+            // Persistent listener survives scene serialization (runtime AddListener would not).
+            UnityEventTools.AddPersistentListener(
+                findBtn.GetComponent<Button>().onClick, mmComp.StartMatchmaking);
+
+            EditorUtility.SetDirty(mmComp);
         }
 
         // ═══════════════════════════════════════════════════════════════════════

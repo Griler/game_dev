@@ -16,6 +16,13 @@ namespace MathGame.Network
         // ── Singleton (client-side only) ────────────────────────────────────
         public static NetworkGameState Instance { get; private set; }
 
+        /// <summary>
+        /// Upper bound on questions generated per match. Both server and clients
+        /// generate this many from the shared seed; players race through them
+        /// independently. Sized so a fast player can't run out in one round.
+        /// </summary>
+        public const int MaxRaceQuestions = 100;
+
         // ── NetworkVariables (server writes, everyone reads) ────────────────
         static readonly NetworkVariableReadPermission  R = NetworkVariableReadPermission.Everyone;
         static readonly NetworkVariableWritePermission W = NetworkVariableWritePermission.Server;
@@ -23,7 +30,9 @@ namespace MathGame.Network
         public NetworkVariable<int>   Player1Score    = new(0,   R, W);
         public NetworkVariable<int>   Player2Score    = new(0,   R, W);
         public NetworkVariable<int>   QuestionSeed    = new(0,   R, W);
-        public NetworkVariable<int>   QuestionIndex   = new(0,   R, W);
+        // Each player races independently → their own 1-based question pointer.
+        public NetworkVariable<int>   Player1QIndex   = new(0,   R, W);
+        public NetworkVariable<int>   Player2QIndex   = new(0,   R, W);
         public NetworkVariable<int>   PhaseInt        = new(0,   R, W);
         public NetworkVariable<float> TimeRemaining   = new(60f, R, W);
         public NetworkVariable<ulong> Player1ClientId = new(0ul, R, W);
@@ -73,12 +82,6 @@ namespace MathGame.Network
         public void CountdownClientRpc(int count)
         {
             if (!IsServer) ClientGameProxy.Instance?.OnCountdown(count);
-        }
-
-        [ClientRpc]
-        public void NextQuestionClientRpc(int questionIndex)
-        {
-            if (!IsServer) ClientGameProxy.Instance?.OnNextQuestion(questionIndex);
         }
 
         [ClientRpc]

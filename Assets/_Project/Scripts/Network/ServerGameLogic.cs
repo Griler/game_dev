@@ -16,12 +16,18 @@ namespace MathGame.Network
     [RequireComponent(typeof(NetworkGameState))]
     public class ServerGameLogic : MonoBehaviour
     {
+        private const float AdvanceDelay = 0.7f; // correct → pause, then next question
+        private const float RetryDelay   = 1.2f; // wrong → pause (matches client reset), retry same
+
         // ── State ───────────────────────────────────────────────────────────
-        private NetworkGameState         _state;
-        private List<QuestionData>       _questions;
-        private RankConfigData           _config;
-        private Dictionary<ulong, bool>  _answeredThisQuestion = new();
-        private bool                     _matchEnded;
+        private NetworkGameState   _state;
+        private List<QuestionData> _questions;
+        private RankConfigData     _config;
+        private bool               _matchEnded;
+
+        // Per-player race progress (0-based index into _questions) + feedback lock.
+        private int  _p1Index, _p2Index;
+        private bool _p1Locked, _p2Locked;
 
         // ── Player session data ─────────────────────────────────────────────
         private ulong  _p1Id, _p2Id;
@@ -52,16 +58,19 @@ namespace MathGame.Network
             _state.MatchRankInt.Value = (int)matchRank;
             _config = RankConfigProvider.GetDefault(matchRank);
 
-            // Generate all questions server-side (seed is broadcast to clients)
+            // Generate the shared question pool server-side (seed is broadcast to
+            // clients). Players race through the same sequence at their own pace.
             int seed = Random.Range(int.MinValue, int.MaxValue);
             _state.QuestionSeed.Value = seed;
             var gen = new QuestionGenerator(seed);
-            _questions = new List<QuestionData>(_config.questionsPerRound);
-            for (int i = 0; i < _config.questionsPerRound; i++)
+            _questions = new List<QuestionData>(NetworkGameState.MaxRaceQuestions);
+            for (int i = 0; i < NetworkGameState.MaxRaceQuestions; i++)
                 _questions.Add(gen.Generate(_config));
 
             _state.TimeRemaining.Value = _config.roundDurationSeconds;
             _matchEnded = false;
+            _p1Index = _p2Index = 0;
+            _p1Locked = _p2Locked = false;
 
             StartCoroutine(RunCountdown());
         }
@@ -91,26 +100,11 @@ namespace MathGame.Network
                 _state.CountdownClientRpc(i);
                 yield return new WaitForSeconds(1f);
             }
-            _state.PhaseInt.Value = (int)GamePhase.Playing;
-            LoadQuestion(0);
-        }
 
-        // ── Question management ─────────────────────────────────────────────
-
-        private void LoadQuestion(int index)
-        {
-            if (index >= _questions.Count)
-            {
-                EndMatch();
-                return;
-            }
-
-            _answeredThisQuestion.Clear();
-            _answeredThisQuestion[_p1Id] = false;
-            _answeredThisQuestion[_p2Id] = false;
-
-            _state.QuestionIndex.Value = index + 1; // 1-based for display
-            _state.NextQuestionClientRpc(index + 1);
+            // Both players start on question 1 at the same moment, then diverge.
+            _state.PhaseInt.Value      = (int)GamePhase.Playing;
+            _state.Player1QIndex.Value = 1;
+            _state.Player2QIndex.Value = 1;
         }
 
         // ── Answer handling ─────────────────────────────────────────────────
@@ -120,44 +114,64 @@ namespace MathGame.Network
             if (_matchEnded) return;
             if (_state.CurrentPhase != GamePhase.Playing) return;
 
-            // Reject duplicate answer for the same question
-            if (!_answeredThisQuestion.ContainsKey(clientId)) return;
-            if (_answeredThisQuestion[clientId]) return;
-            _answeredThisQuestion[clientId] = true;
+            bool isP1;
+            if      (clientId == _p1Id) isP1 = true;
+            else if (clientId == _p2Id) isP1 = false;
+            else return; // not a participant of this match
 
-            int qIndex = _state.QuestionIndex.Value - 1;
-            if (qIndex < 0 || qIndex >= _questions.Count) return;
+            // Ignore while this player is in the feedback/advance window.
+            if (isP1 ? _p1Locked : _p2Locked) return;
 
-            var question = _questions[qIndex];
+            int index = isP1 ? _p1Index : _p2Index;
+            if (index < 0 || index >= _questions.Count) return; // ran out of questions
+
+            if (isP1) _p1Locked = true; else _p2Locked = true;
+
+            var question = _questions[index];
             bool correct = CheckAnswer(filledValues, question.correctAnswers);
-
-            if (correct)
-            {
-                if (clientId == _p1Id) _state.Player1Score.Value++;
-                else                   _state.Player2Score.Value++;
-            }
 
             _state.ShowAnswerResultClientRpc(clientId, correct, question.correctAnswers);
 
-            // Advance when both players have answered
-            bool bothAnswered = _answeredThisQuestion[_p1Id] && _answeredThisQuestion[_p2Id];
-            if (bothAnswered)
-                StartCoroutine(AdvanceQuestion());
-        }
-
-        private IEnumerator AdvanceQuestion()
-        {
-            _state.PhaseInt.Value = (int)GamePhase.QuestionResult;
-            yield return new WaitForSeconds(1.2f);
-
-            int nextIndex = _state.QuestionIndex.Value; // already 1-based, next = current value
-            if (nextIndex >= _questions.Count)
-                EndMatch();
+            if (correct)
+            {
+                if (isP1) _state.Player1Score.Value++;
+                else      _state.Player2Score.Value++;
+                StartCoroutine(AdvancePlayer(isP1));     // move on to the next question
+            }
             else
             {
-                _state.PhaseInt.Value = (int)GamePhase.Playing;
-                LoadQuestion(nextIndex);
+                StartCoroutine(UnlockAfter(isP1, RetryDelay)); // retry the same question
             }
+        }
+
+        /// <summary>After a short feedback pause, move one player to their next question.</summary>
+        private IEnumerator AdvancePlayer(bool isP1)
+        {
+            yield return new WaitForSeconds(AdvanceDelay);
+            if (_matchEnded) yield break;
+
+            if (isP1)
+            {
+                _p1Index++;
+                if (_p1Index < _questions.Count)
+                    _state.Player1QIndex.Value = _p1Index + 1;
+                _p1Locked = false;
+            }
+            else
+            {
+                _p2Index++;
+                if (_p2Index < _questions.Count)
+                    _state.Player2QIndex.Value = _p2Index + 1;
+                _p2Locked = false;
+            }
+        }
+
+        /// <summary>Wrong answer: keep the same question, just lift the lock so they can retry.</summary>
+        private IEnumerator UnlockAfter(bool isP1, float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            if (_matchEnded) yield break;
+            if (isP1) _p1Locked = false; else _p2Locked = false;
         }
 
         // ── Match end ───────────────────────────────────────────────────────

@@ -3,7 +3,9 @@
     "rootNamespace": "MathGame.Editor",
     "references": [
         "MathGame",
-        "Unity.TextMeshPro"
+        "Unity.TextMeshPro",
+        "Unity.Netcode.Runtime",
+        "Unity.Networking.Transport"
     ],
     "includePlatforms": [
         "Editor"
