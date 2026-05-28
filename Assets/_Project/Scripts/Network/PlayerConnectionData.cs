@@ -7,6 +7,7 @@ namespace MathGame.Network
     {
         public string playerName;
         public int    eloRating;
+        public int    gamesPlayed;
 
         public byte[] ToBytes() =>
             System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(this));

@@ -1,8 +1,10 @@
 using System.Collections.Generic;
+using Unity.Collections;
 using UnityEngine;
 using MathGame.Core;
 using MathGame.Player;
 using MathGame.Question;
+using MathGame.UI;
 
 namespace MathGame.Network
 {
@@ -17,7 +19,14 @@ namespace MathGame.Network
 
         private NetworkGameState   _state;
         private List<QuestionData> _cachedQuestions;
-        private ulong              _localClientId;
+        private int                _shownQIndex = -1; // last question index displayed to me
+
+        // Read fresh every time: LocalClientId is only valid AFTER the client has
+        // connected, so caching it in Start() (pre-connection) would yield 0.
+        private ulong LocalClientId =>
+            Unity.Netcode.NetworkManager.Singleton != null
+                ? Unity.Netcode.NetworkManager.Singleton.LocalClientId
+                : 0ul;
 
         // ── Lifecycle ───────────────────────────────────────────────────────
 
@@ -25,12 +34,6 @@ namespace MathGame.Network
         {
             if (Instance != null) { Destroy(gameObject); return; }
             Instance = this;
-        }
-
-        private void Start()
-        {
-            if (Unity.Netcode.NetworkManager.Singleton != null)
-                _localClientId = Unity.Netcode.NetworkManager.Singleton.LocalClientId;
         }
 
         private void OnDestroy()
@@ -46,11 +49,26 @@ namespace MathGame.Network
             UnsubscribeState();
             _state = state;
 
-            state.QuestionIndex.OnValueChanged += OnQuestionIndexChanged;
-            state.PhaseInt.OnValueChanged       += OnPhaseChanged;
-            state.Player1Score.OnValueChanged   += OnScoreChanged;
-            state.Player2Score.OnValueChanged   += OnScoreChanged;
-            state.QuestionSeed.OnValueChanged   += OnSeedChanged;
+            // Hand the local GameManager over to network control so its offline
+            // question loop / timer / ELO path stops running.
+            GameManager.Instance?.SetNetworkedMode(true);
+
+            // The match is live — dismiss the "Finding match…" overlay.
+            Object.FindFirstObjectByType<MatchmakingPanel>()?.Hide();
+
+            state.Player1QIndex.OnValueChanged   += OnQIndexChanged;
+            state.Player2QIndex.OnValueChanged   += OnQIndexChanged;
+            state.PhaseInt.OnValueChanged        += OnPhaseChanged;
+            state.Player1Score.OnValueChanged    += OnScoreChanged;
+            state.Player2Score.OnValueChanged    += OnScoreChanged;
+            state.QuestionSeed.OnValueChanged    += OnSeedChanged;
+            state.TimeRemaining.OnValueChanged   += OnTimeChanged;
+            // Player info is written by InitMatch *after* Spawn(), so it may arrive
+            // a tick later than this callback — refresh the cards when it does.
+            state.Player1ClientId.OnValueChanged += OnPlayerInfoChanged;
+            state.Player2ClientId.OnValueChanged += OnPlayerInfoChanged;
+            state.Player1Name.OnValueChanged     += OnPlayerInfoChanged;
+            state.Player2Name.OnValueChanged     += OnPlayerInfoChanged;
 
             // If seed is already set (late join), generate questions now
             if (state.QuestionSeed.Value != 0)
@@ -63,13 +81,14 @@ namespace MathGame.Network
 
         private void OnSeedChanged(int _, int seed)
         {
-            if (seed != 0) GenerateQuestionsFromSeed(seed);
+            if (seed != 0)
+            {
+                GenerateQuestionsFromSeed(seed);
+                TryShowMyQuestion(); // seed may arrive after QIndex was already set
+            }
         }
 
-        private void OnQuestionIndexChanged(int _, int index)
-        {
-            // Handled via NextQuestionClientRpc for immediate UI response
-        }
+        private void OnQIndexChanged(int _, int __) => TryShowMyQuestion();
 
         private void OnPhaseChanged(int _, int phaseInt)
         {
@@ -78,17 +97,31 @@ namespace MathGame.Network
             if (gm == null) return;
 
             if (phase == GamePhase.Playing)
+            {
+                gm.hud?.HideCountdown();
                 gm.stateMachine.TransitionTo(GamePhase.Playing);
-            else if (phase == GamePhase.QuestionResult)
-                gm.stateMachine.TransitionTo(GamePhase.QuestionResult);
+                // After TransitionTo: GameHUD's own handler also sets a duration from
+                // the (null on clients) offline config, so set the real one last.
+                gm.hud?.timerBar?.SetDuration(
+                    RankConfigProvider.GetDefault(_state.MatchRank).roundDurationSeconds);
+                TryShowMyQuestion();
+            }
             else if (phase == GamePhase.ShowResult)
                 gm.stateMachine.TransitionTo(GamePhase.ShowResult);
         }
 
+        private void OnTimeChanged(float _, float remaining)
+        {
+            GameManager.Instance?.hud?.timerBar?.UpdateTime(remaining);
+        }
+
+        private void OnPlayerInfoChanged(ulong _, ulong __) => UpdatePlayerCards();
+        private void OnPlayerInfoChanged(FixedString64Bytes _, FixedString64Bytes __) => UpdatePlayerCards();
+
         private void OnScoreChanged(int _, int __)
         {
             if (_state == null) return;
-            bool localIsP1 = _localClientId == _state.Player1ClientId.Value;
+            bool localIsP1 = LocalClientId == _state.Player1ClientId.Value;
             int localScore  = localIsP1 ? _state.Player1Score.Value : _state.Player2Score.Value;
             int remoteScore = localIsP1 ? _state.Player2Score.Value : _state.Player1Score.Value;
 
@@ -100,30 +133,35 @@ namespace MathGame.Network
 
         public void OnCountdown(int count)
         {
+            // Hidden later when the Playing phase begins (see OnPhaseChanged).
             GameManager.Instance?.hud?.ShowCountdown(count);
-            if (count == 1)
-                // HideCountdown is called when Playing phase begins
-                GameManager.Instance?.hud?.HideCountdown();
         }
 
-        public void OnNextQuestion(int questionIndex)
+        /// <summary>Show the question at my own (per-player) race index, if it changed.</summary>
+        private void TryShowMyQuestion()
         {
-            if (_cachedQuestions == null || questionIndex <= 0) return;
-            int idx = questionIndex - 1;
+            if (_state == null || _cachedQuestions == null) return;
+
+            bool localIsP1 = LocalClientId == _state.Player1ClientId.Value;
+            int  myIndex   = localIsP1 ? _state.Player1QIndex.Value : _state.Player2QIndex.Value; // 1-based
+            if (myIndex <= 0 || myIndex == _shownQIndex) return;
+
+            int idx = myIndex - 1;
             if (idx >= _cachedQuestions.Count) return;
 
-            var q   = _cachedQuestions[idx];
-            var cfg = RankConfigProvider.GetDefault(_state.MatchRank);
-            var gm  = GameManager.Instance;
+            _shownQIndex = myIndex;
+            var q  = _cachedQuestions[idx];
+            var gm = GameManager.Instance;
 
-            gm?.hud?.questionPanel?.DisplayQuestion(q, questionIndex, cfg.questionsPerRound);
+            // total = 0 → panel shows just "Câu X" (a race has no fixed total).
+            gm?.hud?.questionPanel?.DisplayQuestion(q, myIndex, 0);
             gm?.hud?.numberTilePool?.SetupPool(q.poolNumbers);
         }
 
         public void OnAnswerResult(ulong answererId, bool correct, int[] correctAnswers)
         {
             // Only trigger UI feedback on the client that sent the answer
-            if (answererId != _localClientId) return;
+            if (answererId != LocalClientId) return;
             GameManager.Instance?.hud?.questionPanel?.ShowAnswerFeedback(correct, correctAnswers);
         }
 
@@ -132,8 +170,8 @@ namespace MathGame.Network
         {
             if (_state == null) return;
 
-            bool localIsP1  = _localClientId == _state.Player1ClientId.Value;
-            bool localWon   = winnerId == _localClientId;
+            bool localIsP1  = LocalClientId == _state.Player1ClientId.Value;
+            bool localWon   = winnerId == LocalClientId;
             int  localScore = localIsP1 ? p1Score : p2Score;
             int  remoteScore = localIsP1 ? p2Score : p1Score;
             int  myEloChange = localIsP1 ? eloChangeP1 : eloChangeP2;
@@ -159,8 +197,9 @@ namespace MathGame.Network
             if (_state == null) return;
             var config = RankConfigProvider.GetDefault(_state.MatchRank);
             var gen    = new QuestionGenerator(seed);
-            _cachedQuestions = new List<QuestionData>(config.questionsPerRound);
-            for (int i = 0; i < config.questionsPerRound; i++)
+            // Must match the server's pool exactly (same seed, same count).
+            _cachedQuestions = new List<QuestionData>(NetworkGameState.MaxRaceQuestions);
+            for (int i = 0; i < NetworkGameState.MaxRaceQuestions; i++)
                 _cachedQuestions.Add(gen.Generate(config));
         }
 
@@ -170,7 +209,7 @@ namespace MathGame.Network
             var hud = GameManager.Instance?.hud;
             if (hud == null) return;
 
-            bool localIsP1 = _localClientId == _state.Player1ClientId.Value;
+            bool localIsP1 = LocalClientId == _state.Player1ClientId.Value;
 
             string localName  = localIsP1 ? _state.Player1Name.Value.ToString() : _state.Player2Name.Value.ToString();
             string remoteName = localIsP1 ? _state.Player2Name.Value.ToString() : _state.Player1Name.Value.ToString();
@@ -184,11 +223,17 @@ namespace MathGame.Network
         private void UnsubscribeState()
         {
             if (_state == null) return;
-            _state.QuestionIndex.OnValueChanged -= OnQuestionIndexChanged;
-            _state.PhaseInt.OnValueChanged       -= OnPhaseChanged;
-            _state.Player1Score.OnValueChanged   -= OnScoreChanged;
-            _state.Player2Score.OnValueChanged   -= OnScoreChanged;
-            _state.QuestionSeed.OnValueChanged   -= OnSeedChanged;
+            _state.Player1QIndex.OnValueChanged   -= OnQIndexChanged;
+            _state.Player2QIndex.OnValueChanged   -= OnQIndexChanged;
+            _state.PhaseInt.OnValueChanged        -= OnPhaseChanged;
+            _state.Player1Score.OnValueChanged    -= OnScoreChanged;
+            _state.Player2Score.OnValueChanged    -= OnScoreChanged;
+            _state.QuestionSeed.OnValueChanged    -= OnSeedChanged;
+            _state.TimeRemaining.OnValueChanged   -= OnTimeChanged;
+            _state.Player1ClientId.OnValueChanged -= OnPlayerInfoChanged;
+            _state.Player2ClientId.OnValueChanged -= OnPlayerInfoChanged;
+            _state.Player1Name.OnValueChanged     -= OnPlayerInfoChanged;
+            _state.Player2Name.OnValueChanged     -= OnPlayerInfoChanged;
         }
     }
 }
