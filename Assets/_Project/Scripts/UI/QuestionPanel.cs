@@ -1,0 +1,152 @@
+using System;
+using System.Collections;
+using UnityEngine;
+using TMPro;
+using MathGame.Question;
+using MathGame.Core;
+
+namespace MathGame.UI
+{
+    /// <summary>
+    /// Owns the expression text and blank slots.
+    /// Orchestrates left-to-right blank filling and triggers answer submission.
+    /// </summary>
+    public class QuestionPanel : MonoBehaviour
+    {
+        [SerializeField] private TextMeshProUGUI _expressionText;
+        [SerializeField] private TextMeshProUGUI _questionCounterText;
+        [SerializeField] private BlankSlot[]     _blankSlots;          // sized to max blanks (3)
+
+        private QuestionData _question;
+        private int[]        _filledValues;
+        private NumberTile[] _tilesInBlanks;    // which tile occupies each blank
+        private int          _currentBlankIndex;
+        private bool         _submitted;
+
+        // ── Public API ───────────────────────────────────────────────────────
+
+        public void DisplayQuestion(QuestionData q, int questionIndex, int totalQuestions)
+        {
+            _question          = q;
+            _filledValues      = new int[q.blankCount];
+            _tilesInBlanks     = new NumberTile[q.blankCount];
+            _currentBlankIndex = 0;
+            _submitted         = false;
+
+            // Show/hide blank slots based on blank count
+            for (int i = 0; i < _blankSlots.Length; i++)
+            {
+                bool active = i < q.blankCount;
+                _blankSlots[i].gameObject.SetActive(active);
+                if (active) _blankSlots[i].SetEmpty();
+            }
+
+            _questionCounterText.text = $"Câu {questionIndex}/{totalQuestions}";
+            RefreshExpressionText();
+        }
+
+        /// <summary>Called by NumberTile when it is tapped.</summary>
+        public void FillNextBlank(int value, NumberTile sourceTile)
+        {
+            if (_submitted) return;
+            if (_currentBlankIndex >= _question.blankCount) return;
+
+            _filledValues[_currentBlankIndex]  = value;
+            _tilesInBlanks[_currentBlankIndex] = sourceTile;
+            _blankSlots[_currentBlankIndex].SetValue(value);
+            _currentBlankIndex++;
+
+            RefreshExpressionText();
+
+            if (_currentBlankIndex == _question.blankCount)
+                TrySubmit();
+        }
+
+        /// <summary>Called by backspace button; clears the most recently filled blank.</summary>
+        public void ClearLastBlank()
+        {
+            if (_submitted) return;
+            if (_currentBlankIndex <= 0) return;
+
+            _currentBlankIndex--;
+            _tilesInBlanks[_currentBlankIndex]?.SetUsed(false);
+            _tilesInBlanks[_currentBlankIndex] = null;
+            _blankSlots[_currentBlankIndex].SetEmpty();
+
+            RefreshExpressionText();
+        }
+
+        /// <summary>Shows correct/wrong flash after GameManager validates the answer.</summary>
+        public void ShowAnswerFeedback(bool correct, int[] correctValues)
+        {
+            for (int i = 0; i < _question.blankCount; i++)
+            {
+                if (i < _blankSlots.Length && _blankSlots[i].gameObject.activeSelf)
+                {
+                    if (correct)
+                        _blankSlots[i].FlashCorrect();
+                    else
+                        _blankSlots[i].FlashWrong();
+                }
+            }
+
+            if (!correct)
+                StartCoroutine(ResetAfterDelay(1.1f));
+        }
+
+        // ── Private ──────────────────────────────────────────────────────────
+
+        private void TrySubmit()
+        {
+            if (_submitted) return;
+            _submitted = true;
+            GameManager.Instance?.SubmitAnswer(_filledValues);
+        }
+
+        private void RefreshExpressionText()
+        {
+            if (_question == null) return;
+
+            string expr  = _question.expressionTemplate;
+            int    count = 0;
+
+            // Replace each __ with the filled value or a highlighted ?
+            while (expr.Contains("__"))
+            {
+                string replacement;
+                if (count < _currentBlankIndex)
+                    replacement = $"<color=#5BE3FF><b>{_filledValues[count]}</b></color>";
+                else
+                    replacement = "<color=#FFD700><b>__</b></color>";
+
+                int idx = expr.IndexOf("__", StringComparison.Ordinal);
+                expr = expr[..idx] + replacement + expr[(idx + 2)..];
+                count++;
+            }
+
+            _expressionText.text = expr;
+        }
+
+        private IEnumerator ResetAfterDelay(float delay)
+        {
+            yield return new WaitForSeconds(delay);
+
+            if (_question == null) yield break;
+
+            // Re-enable all tiles that were placed
+            for (int i = 0; i < _question.blankCount; i++)
+                _tilesInBlanks[i]?.SetUsed(false);
+
+            // Reset blanks
+            _filledValues      = new int[_question.blankCount];
+            _tilesInBlanks     = new NumberTile[_question.blankCount];
+            _currentBlankIndex = 0;
+            _submitted         = false;
+
+            for (int i = 0; i < _question.blankCount && i < _blankSlots.Length; i++)
+                _blankSlots[i]?.SetEmpty();
+
+            RefreshExpressionText();
+        }
+    }
+}
