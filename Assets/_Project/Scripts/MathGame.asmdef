@@ -3,7 +3,11 @@
     "rootNamespace": "MathGame",
     "references": [
         "Unity.TextMeshPro",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "Unity.Netcode.Runtime",
+        "Unity.Services.Core",
+        "Unity.Services.Authentication",
+        "Unity.Services.Lobbies"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
