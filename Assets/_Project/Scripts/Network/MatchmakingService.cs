@@ -61,7 +61,6 @@ namespace MathGame.Network
                 {
                     var options = new CreateLobbyOptions
                     {
-                        MaxPlayers = 50,
                         IsPrivate  = false,
                         Data = new Dictionary<string, DataObject>
                         {

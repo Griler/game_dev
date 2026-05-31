@@ -16,16 +16,23 @@ namespace MathGame.UI
         [SerializeField] private TextMeshProUGUI statusLabel;
         [SerializeField] private Button          cancelButton;
 
+        [Header("Direct Connect (local test)")]
+        [SerializeField] private Button          directConnectButton;
+        [SerializeField] private string          directConnectIP   = "127.0.0.1";
+        [SerializeField] private ushort          directConnectPort = 7777;
+
         private bool _cancelled;
 
         private void Awake()
         {
             cancelButton?.onClick.AddListener(OnCancel);
+            directConnectButton?.onClick.AddListener(OnDirectConnect);
         }
 
         private void OnDestroy()
         {
             cancelButton?.onClick.RemoveListener(OnCancel);
+            directConnectButton?.onClick.RemoveListener(OnDirectConnect);
         }
 
         public async void StartMatchmaking()
@@ -70,6 +77,22 @@ namespace MathGame.UI
         {
             _cancelled = true;
             Hide();
+        }
+
+        private void OnDirectConnect()
+        {
+            var gm = Core.GameManager.Instance;
+            if (gm == null) { SetStatus("GameManager not found!"); return; }
+
+            SetStatus($"Direct connect → {directConnectIP}:{directConnectPort}…");
+            gameObject.SetActive(true);
+
+            ConnectionManager.Instance.StartAsClient(
+                directConnectIP,
+                directConnectPort,
+                gm.LocalPlayer?.displayName ?? "Player",
+                gm.LocalPlayer?.eloRating   ?? 800,
+                gm.LocalPlayer?.gamesPlayed ?? 0);
         }
 
         private void SetStatus(string msg)

@@ -53,6 +53,9 @@ namespace MathGame.Core
 
         public RankConfigData CurrentConfig => _currentConfig;
 
+        public void RaiseMatchEnded(bool localWon, int localScore, int remoteScore)
+            => OnMatchEnded?.Invoke(localWon, localScore, remoteScore);
+
         // ── Unity lifecycle ──────────────────────────────────────────────────
 
         private void Awake()

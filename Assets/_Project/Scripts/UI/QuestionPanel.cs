@@ -110,24 +110,24 @@ namespace MathGame.UI
         {
             if (_question == null) return;
 
-            string expr  = _question.expressionTemplate;
-            int    count = 0;
+            // Split on __ to avoid replacing into a string that still contains __
+            string[] parts = _question.expressionTemplate.Split(
+                new string[] { "__" }, StringSplitOptions.None);
 
-            // Replace each __ with the filled value or a highlighted ?
-            while (expr.Contains("__"))
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < parts.Length; i++)
             {
-                string replacement;
-                if (count < _currentBlankIndex)
-                    replacement = $"<color=#5BE3FF><b>{_filledValues[count]}</b></color>";
-                else
-                    replacement = "<color=#FFD700><b>__</b></color>";
-
-                int idx = expr.IndexOf("__", StringComparison.Ordinal);
-                expr = expr[..idx] + replacement + expr[(idx + 2)..];
-                count++;
+                sb.Append(parts[i]);
+                if (i < parts.Length - 1) // each gap between parts = one blank
+                {
+                    if (i < _currentBlankIndex)
+                        sb.Append($"<color=#5BE3FF><b>{_filledValues[i]}</b></color>");
+                    else
+                        sb.Append("<color=#FFD700><b>?</b></color>");
+                }
             }
 
-            _expressionText.text = expr;
+            _expressionText.text = sb.ToString();
         }
 
         private IEnumerator ResetAfterDelay(float delay)

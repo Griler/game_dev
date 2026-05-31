@@ -8,7 +8,8 @@
         "Unity.Collections",
         "Unity.Services.Core",
         "Unity.Services.Authentication",
-        "Unity.Services.Lobbies"
+        "Unity.Services.Multiplayer",
+        "Unity.Networking.Transport"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

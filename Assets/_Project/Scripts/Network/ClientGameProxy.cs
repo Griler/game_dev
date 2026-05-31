@@ -187,7 +187,7 @@ namespace MathGame.Network
                 localPlayer.Save();
             }
 
-            GameManager.Instance?.OnMatchEnded?.Invoke(localWon, localScore, remoteScore);
+            GameManager.Instance?.RaiseMatchEnded(localWon, localScore, remoteScore);
         }
 
         // ── Helpers ──────────────────────────────────────────────────────────
