@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Unity.Services.Authentication;
@@ -22,6 +23,7 @@ namespace MathGame.Network
         private const string KEY_SERVER_IP   = "ServerIP";
         private const string KEY_SERVER_PORT = "ServerPort";
         private const string KEY_RANK        = "Rank";
+        private const float  HeartbeatInterval = 25f; // Lobby expires after 30s without heartbeat
 
         private readonly Dictionary<PlayerRank, Lobby> _serverLobbies = new();
 
@@ -31,6 +33,11 @@ namespace MathGame.Network
         {
             if (Instance != null) { Destroy(gameObject); return; }
             Instance = this;
+        }
+
+        private void OnDestroy()
+        {
+            StopAllCoroutines();
         }
 
         // ── UGS Init ────────────────────────────────────────────────────────
@@ -64,8 +71,9 @@ namespace MathGame.Network
                         IsPrivate  = false,
                         Data = new Dictionary<string, DataObject>
                         {
-                            [KEY_SERVER_IP]   = new DataObject(DataObject.VisibilityOptions.Member, publicIP),
-                            [KEY_SERVER_PORT] = new DataObject(DataObject.VisibilityOptions.Member, port.ToString()),
+                            // Public visibility so clients can read IP/port from query results
+                            [KEY_SERVER_IP]   = new DataObject(DataObject.VisibilityOptions.Public, publicIP),
+                            [KEY_SERVER_PORT] = new DataObject(DataObject.VisibilityOptions.Public, port.ToString()),
                             [KEY_RANK]        = new DataObject(DataObject.VisibilityOptions.Public,
                                                     ((int)rank).ToString(),
                                                     DataObject.IndexOptions.N1),
@@ -81,6 +89,28 @@ namespace MathGame.Network
                 catch (Exception e)
                 {
                     Debug.LogError($"[Server] Failed to create lobby for {rank}: {e.Message}");
+                }
+            }
+
+            // Keep lobbies alive with heartbeat every 25s (Lobby expires after 30s)
+            StartCoroutine(HeartbeatLoop());
+        }
+
+        private IEnumerator HeartbeatLoop()
+        {
+            while (true)
+            {
+                yield return new WaitForSeconds(HeartbeatInterval);
+                foreach (var kvp in _serverLobbies)
+                {
+                    var lobby = kvp.Value;
+                    LobbyService.Instance.SendHeartbeatPingAsync(lobby.Id)
+                        .ContinueWith(t => {
+                            if (t.IsFaulted)
+                                Debug.LogWarning($"[Server] Heartbeat failed for {kvp.Key}: {t.Exception?.Message}");
+                            else
+                                Debug.Log($"[Server] Heartbeat OK: {kvp.Key}");
+                        });
                 }
             }
         }
