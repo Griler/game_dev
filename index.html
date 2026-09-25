@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Đêm Trung Thu</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;font-family:"Segoe UI",Arial,sans-serif;background:#07152f;touch-action:none}
+#game{position:relative;width:100%;height:100%;overflow:hidden;cursor:pointer;background:radial-gradient(circle at 50% 115%,rgba(165,82,190,.38),transparent 42%),linear-gradient(180deg,#07142d 0%,#102a58 48%,#32457c 76%,#6b3c72 100%);transition:background 1.8s ease}
+#game.celebrate{background:radial-gradient(circle at 50% 12%,rgba(255,221,128,.22),transparent 27%),radial-gradient(circle at 50% 110%,rgba(232,130,105,.35),transparent 45%),linear-gradient(180deg,#102754 0%,#25477b 48%,#624b86 76%,#9a596e 100%)}
+#stars{position:absolute;inset:0;pointer-events:none}.star{position:absolute;border-radius:50%;background:#fff;box-shadow:0 0 7px rgba(255,255,255,.9);animation:twinkle var(--time) ease-in-out infinite alternate}
+@keyframes twinkle{from{opacity:.2;transform:scale(.7)}to{opacity:1;transform:scale(1.5)}}
+#moonWrap{position:absolute;width:180px;height:180px;left:50%;top:8%;transform:translateX(-50%);z-index:2}
+#moonGlow{position:absolute;inset:-80px;border-radius:50%;background:radial-gradient(circle,rgba(255,226,133,.32),rgba(255,210,95,.1) 45%,transparent 70%);animation:moonGlow 3s ease-in-out infinite alternate}
+#moon{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 31% 34%,rgba(210,168,91,.19) 0 7%,transparent 8%),radial-gradient(circle at 67% 61%,rgba(199,155,77,.17) 0 9%,transparent 10%),radial-gradient(circle at 55% 26%,rgba(255,255,255,.35) 0 5%,transparent 6%),radial-gradient(circle at 35% 30%,#fff8d4,#ffd77c 70%,#f5b942);box-shadow:0 0 30px #ffd86a,0 0 70px rgba(255,213,111,.7),0 0 140px rgba(255,200,70,.25)}
+@keyframes moonGlow{to{transform:scale(1.12);opacity:.75}}
+.cloud{position:absolute;height:30px;width:180px;border-radius:50%;filter:blur(13px);opacity:.13;background:#d1ddff;animation:cloudMove linear infinite}.c1{top:20%;left:-220px;animation-duration:25s}.c2{top:42%;left:-300px;width:270px;animation-duration:38s;animation-delay:-15s}.c3{top:62%;left:-250px;width:220px;animation-duration:31s;animation-delay:-5s}
+@keyframes cloudMove{to{transform:translateX(calc(100vw + 550px))}}
+.bg-lantern{position:absolute;bottom:-100px;width:22px;height:31px;border-radius:45%;background:linear-gradient(90deg,#b91c1c,#ff7a18,#b91c1c);box-shadow:0 0 12px #ff7a18,0 0 25px rgba(255,100,20,.55);opacity:.65;animation:bgFly linear forwards}.bg-lantern:after{content:"";position:absolute;left:50%;bottom:-12px;width:1px;height:11px;background:#ffc857}
+@keyframes bgFly{0%{transform:translateY(0) translateX(0) scale(.7);opacity:0}10%{opacity:.65}100%{transform:translateY(-120vh) translateX(var(--drift)) scale(1);opacity:0}}
+#lanternWrap{position:absolute;left:50%;bottom:9%;width:120px;height:165px;transform:translateX(-50%);z-index:20}
+#lantern{position:absolute;width:100px;height:125px;left:10px;top:12px;border-radius:42% 42% 47% 47%;background:repeating-linear-gradient(90deg,rgba(100,0,0,.22) 0,rgba(100,0,0,.22) 3px,transparent 4px,transparent 17px),radial-gradient(ellipse at center,#ffd35c 0%,#ff7b22 32%,#e93325 67%,#8f1016 100%);border:3px solid #7c1515;box-shadow:inset 0 0 25px rgba(255,221,90,.8),0 0 18px rgba(255,91,30,.5);animation:lanternIdle 2.5s ease-in-out infinite}
+#lantern:before,#lantern:after{content:"";position:absolute;left:7px;width:80px;height:10px;border-radius:5px;background:linear-gradient(#8a3c18,#3f170b)}#lantern:before{top:-7px}#lantern:after{bottom:-7px}
+@keyframes lanternIdle{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg) translateY(-5px)}}
+#light{position:absolute;left:50%;top:50%;width:35px;height:45px;transform:translate(-50%,-50%);border-radius:50%;background:#fff5a8;filter:blur(7px);opacity:.35;box-shadow:0 0 25px #fff08a,0 0 55px #ffad32,0 0 90px #ff7020}
+#tassel{position:absolute;width:4px;height:40px;background:#ffd257;left:58px;top:138px}#tassel:after{content:"";position:absolute;width:17px;height:25px;left:-6px;top:29px;background:linear-gradient(90deg,#e7aa25,#ffd95d,#e7aa25);clip-path:polygon(0 0,100% 0,83% 100%,67% 55%,50% 100%,33% 55%,17% 100%)}
+#chargeRing{position:absolute;width:150px;height:150px;left:50%;top:50%;transform:translate(-50%,-50%);border:2px solid rgba(255,225,120,.15);border-radius:50%;opacity:0;box-shadow:0 0 25px rgba(255,214,70,.3),inset 0 0 20px rgba(255,214,70,.15)}
+.particle{position:absolute;border-radius:50%;pointer-events:none;background:#ffe88a;box-shadow:0 0 8px #ffd85c,0 0 15px #ffae35;z-index:15}
+#ui{position:absolute;width:100%;bottom:3%;text-align:center;z-index:50;color:white;text-shadow:0 2px 8px rgba(0,0,0,.8)}#instruction{font-size:16px;letter-spacing:.5px;opacity:.9}#energyBar{width:min(320px,72vw);height:8px;margin:12px auto;overflow:hidden;border-radius:20px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.15);transition:opacity .5s}#energy{width:0;height:100%;border-radius:inherit;background:linear-gradient(90deg,#ff982f,#ffe66d,#fff7bd);box-shadow:0 0 13px #ffd44d}
+#win{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:100;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 25%,rgba(255,218,120,.13),transparent 32%),radial-gradient(circle at 50% 100%,rgba(154,80,190,.16),transparent 48%);transition:opacity 1.5s}
+#win.show{opacity:1}#win h1{text-align:center;font-size:clamp(42px,9vw,95px);font-family:Georgia,serif;color:#fff0a6;text-shadow:0 0 8px #ffb52e,0 0 20px #ff8a24,0 0 45px #ff4e20;transform:scale(.4);opacity:0}#win.show h1{animation:titleIn 1.4s .5s cubic-bezier(.17,.89,.32,1.3) forwards}#win p{margin-top:14px;font-size:clamp(16px,3vw,24px);letter-spacing:4px;color:#fff6cf;opacity:0}#win.show p{animation:fadeIn 1.5s 1.5s forwards}
+@keyframes titleIn{to{opacity:1;transform:scale(1)}}@keyframes fadeIn{to{opacity:.9}}
+#fireworks{position:absolute;inset:0;z-index:90;pointer-events:none}
+@media(max-width:600px){#moonWrap{width:135px;height:135px;top:8%}#lanternWrap{transform:translateX(-50%) scale(.85)}}
+</style>
+</head>
+<body>
+<div id="game">
+<div id="stars"></div><div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div>
+<div id="moonWrap"><div id="moonGlow"></div><div id="moon"></div></div>
+<div id="lanternWrap"><div id="chargeRing"></div><div id="lantern"><div id="light"></div></div><div id="tassel"></div></div>
+<div id="ui"><div id="instruction">Nhấn giữ để thắp sáng đèn lồng ✨</div><div id="energyBar"><div id="energy"></div></div></div>
+<canvas id="fireworks"></canvas>
+<div id="win"><h1>TRUNG THU<br>VUI VẺ</h1><p>🌕 ĐOÀN VIÊN · HẠNH PHÚC 🌕</p></div>
+</div>
+<script>
+const game=document.getElementById("game"),stars=document.getElementById("stars"),lanternWrap=document.getElementById("lanternWrap"),lantern=document.getElementById("lantern"),light=document.getElementById("light"),energy=document.getElementById("energy"),chargeRing=document.getElementById("chargeRing"),instruction=document.getElementById("instruction"),win=document.getElementById("win");
+for(let i=0;i<130;i++){const s=document.createElement("div");s.className="star";const z=Math.random()*2.5+.7;s.style.width=z+"px";s.style.height=z+"px";s.style.left=Math.random()*100+"%";s.style.top=Math.random()*82+"%";s.style.setProperty("--time",(Math.random()*3+1.5)+"s");s.style.animationDelay=-Math.random()*4+"s";stars.appendChild(s)}
+let finished=false;
+function createBgLantern(force=false){if(finished&&!force)return;const l=document.createElement("div");l.className="bg-lantern";l.style.left=Math.random()*100+"%";l.style.setProperty("--drift",(Math.random()*150-75)+"px");const d=Math.random()*10+12;l.style.animationDuration=d+"s";game.appendChild(l);setTimeout(()=>l.remove(),d*1000)}
+setInterval(()=>createBgLantern(),1300);
+let charging=false,charge=0,lastTime=performance.now(),launched=false;
+game.addEventListener("pointerdown",()=>{if(launched||finished)return;charging=true;instruction.textContent="Đang truyền ánh sáng... ✨"});
+window.addEventListener("pointerup",()=>{if(!charging)return;charging=false;if(charge>=95)launchLantern();else instruction.textContent="Giữ lâu hơn để đèn đủ sáng"});
+window.addEventListener("pointercancel",()=>charging=false);
+function loop(now){const dt=Math.min((now-lastTime)/1000,.05);lastTime=now;if(charging&&!launched){charge=Math.min(100,charge+35*dt);updateCharge();createChargeParticle();if(charge>=100){charging=false;setTimeout(launchLantern,150)}}requestAnimationFrame(loop)}requestAnimationFrame(loop);
+function updateCharge(){energy.style.width=charge+"%";const p=charge/100;light.style.opacity=.35+p*.65;light.style.transform=`translate(-50%,-50%) scale(${1+p*1.7})`;lantern.style.boxShadow=`inset 0 0 ${25+p*30}px rgba(255,230,110,.9),0 0 ${18+p*50}px rgba(255,100,25,.8),0 0 ${p*100}px rgba(255,215,70,.45)`;chargeRing.style.opacity=p;chargeRing.style.transform=`translate(-50%,-50%) scale(${.7+p*.7})`}
+function createChargeParticle(){if(Math.random()>.55)return;const p=document.createElement("div");p.className="particle";const r=lanternWrap.getBoundingClientRect(),x=r.left+r.width/2+(Math.random()*120-60),y=r.top+r.height/2+(Math.random()*110-55),z=Math.random()*4+2;p.style.cssText+=`width:${z}px;height:${z}px;left:${x}px;top:${y}px`;game.appendChild(p);p.animate([{transform:"translate(0,0) scale(1)",opacity:1},{transform:`translate(${r.left+r.width/2-x}px,${r.top+r.height/2-y}px) scale(.1)`,opacity:0}],{duration:700,easing:"ease-in"});setTimeout(()=>p.remove(),700)}
+function launchLantern(){if(launched)return;launched=true;charge=100;updateCharge();instruction.textContent="Ước một điều nhé... 🌕";energy.parentElement.style.opacity="0";const start=performance.now(),duration=6200;function fly(now){let t=Math.min(1,(now-start)/duration),e=1-Math.pow(1-t,2),y=e*72,sway=Math.sin(t*12)*18,scale=1-t*.35;lanternWrap.style.bottom=`calc(9% + ${y}vh)`;lanternWrap.style.transform=`translateX(calc(-50% + ${sway}px)) scale(${scale})`;createTrail();if(t<1)requestAnimationFrame(fly);else finishGame()}requestAnimationFrame(fly)}
+let trailCounter=0;
+function createTrail(){if(++trailCounter%3)return;const r=lanternWrap.getBoundingClientRect(),p=document.createElement("div"),z=Math.random()*4+2;p.className="particle";p.style.cssText+=`width:${z}px;height:${z}px;left:${r.left+r.width/2+(Math.random()*30-15)}px;top:${r.bottom-35}px`;game.appendChild(p);p.animate([{transform:"translate(0,0)",opacity:1},{transform:`translate(${Math.random()*50-25}px,80px)`,opacity:0}],{duration:1200,easing:"ease-out"});setTimeout(()=>p.remove(),1300)}
+function finishGame(){if(finished)return;finished=true;game.classList.add("celebrate");instruction.style.opacity="0";lanternWrap.animate([{opacity:1,filter:"brightness(1)"},{opacity:0,filter:"brightness(4)"}],{duration:1000,fill:"forwards"});document.getElementById("moonWrap").animate([{transform:"translateX(-50%) scale(1)"},{transform:"translateX(-50%) scale(1.18)"},{transform:"translateX(-50%) scale(1)"}],{duration:1400,easing:"ease-out"});setTimeout(()=>{win.classList.add("show");startFireworks();let n=0;const burst=setInterval(()=>{createBgLantern(true);if(++n>=12)clearInterval(burst)},450)},700)}
+const canvas=document.getElementById("fireworks"),ctx=canvas.getContext("2d");let fireworksActive=false,fireworksParticles=[];
+function resize(){canvas.width=innerWidth*devicePixelRatio;canvas.height=innerHeight*devicePixelRatio;canvas.style.width=innerWidth+"px";canvas.style.height=innerHeight+"px";ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0)}resize();addEventListener("resize",resize);
+function startFireworks(){fireworksActive=true;explode(innerWidth*.2,innerHeight*.3);setTimeout(()=>explode(innerWidth*.8,innerHeight*.27),550);setTimeout(()=>explode(innerWidth*.5,innerHeight*.18),1200);setInterval(()=>{if(fireworksActive)explode(innerWidth*(.15+Math.random()*.7),innerHeight*(.12+Math.random()*.32))},1500);animateFireworks()}
+function explode(x,y){const count=35+Math.floor(Math.random()*20),hue=Math.random()*360;for(let i=0;i<count;i++){const a=Math.PI*2*i/count+Math.random()*.08,s=Math.random()*3.8+1.8;fireworksParticles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,decay:Math.random()*.012+.009,hue:hue+Math.random()*25-12,size:Math.random()*2+1})}}
+function animateFireworks(){if(!fireworksActive)return;ctx.fillStyle="rgba(10,25,60,.07)";ctx.fillRect(0,0,innerWidth,innerHeight);ctx.globalCompositeOperation="lighter";for(let i=fireworksParticles.length-1;i>=0;i--){const p=fireworksParticles[i],ox=p.x,oy=p.y;p.x+=p.vx;p.y+=p.vy;p.vx*=.985;p.vy*=.985;p.vy+=.035;p.life-=p.decay;ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(p.x,p.y);ctx.strokeStyle=`hsla(${p.hue},100%,70%,${p.life})`;ctx.lineWidth=p.size;ctx.stroke();if(p.life<=0)fireworksParticles.splice(i,1)}ctx.globalCompositeOperation="source-over";requestAnimationFrame(animateFireworks)}
+</script>
+</body>
+</html>
